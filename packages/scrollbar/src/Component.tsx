@@ -1,4 +1,4 @@
-import React, { HTMLAttributes, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { HTMLAttributes, useEffect, useRef } from 'react';
 import cn from 'classnames';
 import mergeRefs from 'react-merge-refs';
 import SimpleBar from 'simplebar/dist/simplebar-core.esm';
@@ -103,56 +103,9 @@ export const Scrollbar = React.forwardRef<HTMLDivElement, ScrollbarProps>(
         const elRef = useRef<HTMLDivElement>(null);
         const scrollableNodeRef = useRef<HTMLDivElement>(null);
         const contentNodeRef = useRef<HTMLDivElement>(null);
-        const fakeContentNodeRef = useRef<HTMLDivElement>(null);
+        const maskNodeRef = useRef<HTMLDivElement>(null);
 
         const colorStyles = colorStylesMap[colors];
-
-        useLayoutEffect(() => {
-            let mutationObserver: MutationObserver | null = null;
-            const contentNode = contentNodeRef.current;
-            const rootNode = elRef.current;
-            const scrollableNode = scrollableNodeRef.current;
-            const fakeContentNode = fakeContentNodeRef.current;
-
-            const setMinWidth = throttle(() => {
-                if (contentNode && fakeContentNode && rootNode && scrollableNode) {
-                    const clonedContent = contentNode.cloneNode(true);
-
-                    fakeContentNode.appendChild(clonedContent);
-
-                    const newMinWidth = `${Math.ceil(
-                        fakeContentNode.getBoundingClientRect().width,
-                    )}px`;
-                    const prevMinWidth = rootNode.style.minWidth;
-
-                    if (newMinWidth !== prevMinWidth) {
-                        rootNode.style.minWidth = newMinWidth;
-                    }
-
-                    fakeContentNode.removeChild(clonedContent);
-                }
-            }, 200);
-
-            if (horizontalAutoStretch && contentNode) {
-                setMinWidth();
-
-                mutationObserver = new MutationObserver(setMinWidth);
-
-                mutationObserver.observe(contentNode, {
-                    childList: true,
-                    subtree: true,
-                    characterData: true,
-                });
-            }
-
-            return () => {
-                setMinWidth.cancel();
-
-                if (mutationObserver) {
-                    mutationObserver.disconnect();
-                }
-            };
-        }, [horizontalAutoStretch]);
 
         useEffect(() => {
             let instance: SimpleBar | null;
@@ -180,6 +133,56 @@ export const Scrollbar = React.forwardRef<HTMLDivElement, ScrollbarProps>(
             // eslint-disable-next-line react-hooks/exhaustive-deps
         }, []);
 
+        useEffect(() => {
+            let mutationObserver: MutationObserver | null = null;
+            const contentNode = contentNodeRef.current;
+            const rootNode = elRef.current;
+            const scrollableNode = scrollableNodeRef.current;
+            const maskNode = maskNodeRef.current;
+
+            const setMinWidth = throttle(() => {
+                if (contentNode && rootNode && scrollableNode && maskNode) {
+                    /*
+                     * Устанавливаем min-width, чтобы максимально растянуть абсолютно позиционированный элемент.
+                     * Затем контенту устанавливаем display: inline-block, чтобы его ширина была равна ширине содержимого.
+                     */
+                    maskNode.style.minWidth = '4000px';
+                    contentNode.style.display = 'inline-block';
+
+                    const contentRect = contentNode.getBoundingClientRect();
+                    const newMinWidth = `${Math.ceil(contentRect.width)}px`;
+                    const prevMinWidth = rootNode.style.minWidth;
+
+                    if (newMinWidth !== prevMinWidth) {
+                        rootNode.style.minWidth = newMinWidth;
+                    }
+
+                    contentNode.style.display = '';
+                    maskNode.style.minWidth = '';
+                }
+            }, 200);
+
+            if (horizontalAutoStretch && contentNode) {
+                setMinWidth();
+
+                mutationObserver = new MutationObserver(setMinWidth);
+
+                mutationObserver.observe(contentNode, {
+                    childList: true,
+                    subtree: true,
+                    characterData: true,
+                });
+            }
+
+            return () => {
+                setMinWidth.cancel();
+
+                if (mutationObserver) {
+                    mutationObserver.disconnect();
+                }
+            };
+        }, [horizontalAutoStretch]);
+
         return (
             <div
                 {...htmlAttributes}
@@ -191,7 +194,7 @@ export const Scrollbar = React.forwardRef<HTMLDivElement, ScrollbarProps>(
                     <div className={classNames.heightAutoObserverWrapperEl}>
                         <div className={classNames.heightAutoObserverEl} />
                     </div>
-                    <div className={classNames.mask}>
+                    <div className={classNames.mask} ref={maskNodeRef}>
                         <div className={classNames.offset}>
                             <div
                                 {...scrollableNodeProps}
@@ -225,13 +228,6 @@ export const Scrollbar = React.forwardRef<HTMLDivElement, ScrollbarProps>(
                 <div className={cn(classNames.track, classNames.vertical)}>
                     <div className={classNames.scrollbar} />
                 </div>
-                {horizontalAutoStretch && (
-                    <div
-                        className={cn(styles.fakeContent)}
-                        ref={fakeContentNodeRef}
-                        aria-hidden={true}
-                    />
-                )}
             </div>
         );
     },
